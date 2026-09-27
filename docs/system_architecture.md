@@ -1,4 +1,5 @@
 # System Architecture Document
+
 ## CogniLearn — Microservices & Agentic RAG Platform
 
 ---
@@ -59,23 +60,25 @@ CogniLearn employs a cloud-native microservices architecture designed for async 
 ## 2. Core Technical Components
 
 ### 2.1 Bilingual Hybrid Retrieval (RAG)
+
 To guarantee high precision across technical German and English academic terminology, retrieval combines dense vector embeddings with sparse text search:
 
 1. **Dense Retrieval:** OpenAI `text-embedding-3-small` (1536 dimensions) stored in PostgreSQL using `pgvector` with HNSW indexing.
 2. **Sparse Retrieval:** PostgreSQL full-text search dictionaries (`to_tsvector('english', content)` and `to_tsvector('german', content)`).
-3. **Re-Ranking Algorithm:** Reciprocal Rank Fusion (RRF) merges top-$K$ candidates from both streams using:
-   $$\text{RRF\_Score}(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
-   Where $M$ represents the set of retrieval methods (Vector, BM25), $k = 60$, and $r_m(d)$ is document $d$'s rank in method $m$.
+3. **Re-Ranking Algorithm:** Reciprocal Rank Fusion (RRF) merges top-K candidates from both streams using product_requirements.md.
 
 ### 2.2 Stateful Multi-Agent Orchestration
+
 The AI core implements a stateful agent router:
-* **Intent Classifier:** Determines if the student request requires direct citation lookup (`QA_MODE`) or conceptual guidance (`SOCRATIC_MODE`).
-* **Q&A Citation Agent:** Focuses on extracting exact textbook references and generating verified answers.
-* **Socratic Tutor Agent:** Uses step-back prompting and cognitive scaffolding to guide reasoning without giving away solutions directly.
+
+- **Intent Classifier:** Determines if the student request requires direct citation lookup (`QA_MODE`) or conceptual guidance (`SOCRATIC_MODE`).
+- **Q&A Citation Agent:** Focuses on extracting exact textbook references and generating verified answers.
+- **Socratic Tutor Agent:** Uses step-back prompting and cognitive scaffolding to guide reasoning without giving away solutions directly.
 
 ### 2.3 Storage Layer Schema
-* **PostgreSQL 16:** Stores document chunks, embeddings, course metadata, and evaluation telemetry.
-* **Redis 7:** Manages active dialogue sessions, user context tokens, rate-limiting counters, and semantic query caching.
+
+- **PostgreSQL 16:** Stores document chunks, embeddings, course metadata, and evaluation telemetry.
+- **Redis 7:** Manages active dialogue sessions, user context tokens, rate-limiting counters, and semantic query caching.
 
 ---
 
@@ -98,6 +101,7 @@ Student (Client)            FastAPI AI Core               PostgreSQL (pgvector) 
 ---
 
 ## 4. Production Security & Compliance
+
 1. **PII Masking:** PII is stripped using regex and NER models before sending payload data to public LLM endpoints.
 2. **OWASP LLM Guardrails:** Input validation blocks indirect prompt injections and system prompt extraction attacks.
 3. **Data Residency:** All database storage and primary microservices run within EU sovereign cloud regions (Azure West Europe / AWS Frankfurt) to ensure GDPR compliance.
