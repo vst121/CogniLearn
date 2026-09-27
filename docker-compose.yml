@@ -1,16 +1,38 @@
-services:
+version: '3.8'
 
+services:
   postgres:
-    image: postgres:17
-    container_name: cognilearn-postgres
-    environment:
-      POSTGRES_DB: cognilearn
-      POSTGRES_USER: cognilearn
-      POSTGRES_PASSWORD: cognilearn
+    image: pgvector/pgvector:pg17
+    container_name: cognilearn_db
+    restart: always
     ports:
       - "5439:5432"
+    environment:
+      POSTGRES_DB: cognilearn
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
-      - cognilearn-postgres-data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cognilearn"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cognilearn_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: cognilearn_jaeger
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC receiver
 
 volumes:
-  cognilearn-postgres-data:
+  pgdata:
