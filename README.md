@@ -48,10 +48,6 @@ Here is the downloadable file containing the clean `README.md` for **CogniLearn 
     +---------------------------------------+
 ```
 
-````
-
----
-
 ## Directory Structure
 
 ```text
@@ -149,4 +145,4 @@ OPENAI_API_KEY="your-openai-api-key"
 
 ```
 
-````
+```
