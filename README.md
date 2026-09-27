@@ -1,6 +1,5 @@
 Here is the downloadable file containing the clean `README.md` for **CogniLearn AI**:
 
-````markdown
 # CogniLearn AI
 
 <p align="center">
@@ -48,6 +47,7 @@ Here is the downloadable file containing the clean `README.md` for **CogniLearn 
     | pgvector (HNSW) + Bilingual FTS (GIN) |
     +---------------------------------------+
 ```
+
 ````
 
 ---
@@ -149,4 +149,4 @@ OPENAI_API_KEY="your-openai-api-key"
 
 ```
 
-```
+````
