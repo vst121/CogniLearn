@@ -1,7 +1,7 @@
 # CogniLearn AI
 
 <p align="center">
-  <img src="frontend/public/CogniLearn.jpg" alt="CogniLearn AI Synapse Book Mark" width="96" height="96" />
+  <img src="frontend/public/CogniLearn.jpg" alt="CogniLearn AI Synapse Book Mark" width="700" height="381" />
 </p>
 
 **CogniLearn AI** is a production-grade, bilingual (EN/DE) artificial intelligence learning platform[cite: 1]. Built with a clean, decoupled architecture[cite: 1], it pairs a **FastAPI** backend powering a **Bilingual Hybrid RAG Engine** and **Socratic Multi-Agent Orchestrator** with a **Next.js 15** frontend web workspace[cite: 1].
