@@ -1,0 +1,16 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: cognilearn-postgres
+    environment:
+      POSTGRES_DB: cognilearn
+      POSTGRES_USER: cognilearn
+      POSTGRES_PASSWORD: cognilearn
+    ports:
+      - "5439:5432"
+    volumes:
+      - cognilearn-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  cognilearn-postgres-data:
