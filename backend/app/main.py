@@ -3,11 +3,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
-
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from app.core.tracing import setup_tracing
 from app.core.db import (
     connect_to_db,
     close_db_connection   
 )
+
+setup_tracing("cognilearn-backend")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
