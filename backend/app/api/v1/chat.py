@@ -36,7 +36,7 @@ class AgentResponse(BaseModel):
 # --- Dependency Factories ---
 
 async def rate_limit_dependency(request: Request):
-    await rate_limiter.check_rate_limit(request, limit=50, window=60)
+    await rate_limiter.check_rate_limit(request, limit=10, window=60)
 
 
 def get_openai_client() -> AsyncOpenAI:
