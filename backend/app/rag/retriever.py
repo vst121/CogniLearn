@@ -21,80 +21,82 @@ class BilingualHybridRetriever:
         rrf_k: int = 60
     ) -> List[Dict[str, Any]]:
         
-        # Parent span wrapping the entire hybrid retrieval operation
+        # Parent span wrapping the full retrieval operation
         with tracer.start_as_current_span("BilingualHybridRetriever.hybrid_search") as span:
-            # Set high-level query metadata as attributes
             span.set_attribute("rag.query_text", query_text)
             span.set_attribute("rag.course_code", course_code)
             span.set_attribute("rag.language", language)
             span.set_attribute("rag.top_k", top_k)
             span.set_attribute("rag.rrf_k", rrf_k)
 
-            fts_config = "german" if language.lower() == "de" else "english"
+            # 1. Fix SQL Injection Risk: Whitelist language configuration
+            lang_config_map = {
+                "de": "german",
+                "en": "english"
+            }
+            fts_config = lang_config_map.get(language.lower(), "english")
+            span.set_attribute("rag.fts_config", fts_config)
 
-            async with self.db_pool.acquire() as conn:
-                # 1. Dense Vector Similarity Search Span
-                with tracer.start_as_current_span("vector_search") as vec_span:
-                    vec_span.set_attribute("rag.candidate_limit", top_k * 2)
-                    
-                    vector_query = """
-                        SELECT id, course_code, language, chapter, section, content,
-                               1 - (embedding <=> $1::vector) AS vector_score
-                        FROM course_documents
-                        WHERE course_code = $2 AND language = $3
-                        ORDER BY embedding <=> $1::vector
-                        LIMIT $4;
-                    """
-                    vector_results = await conn.fetch(
-                        vector_query, str(query_embedding), course_code, language, top_k * 2
-                    )
-                    vec_span.set_attribute("rag.vector_results_count", len(vector_results))
+            # 2. Fix Vector Format: Explicit JSON vector serialization for pgvector
+            embedding_str = json.dumps(query_embedding)
+            candidate_limit = top_k * 2
 
-                # 2. Sparse Full-Text Keyword Search Span
-                with tracer.start_as_current_span("fts_search") as fts_span:
-                    fts_span.set_attribute("rag.fts_config", fts_config)
-                    fts_span.set_attribute("rag.candidate_limit", top_k * 2)
+            # 3 & 5. Optimized Single CTE Query (Uses stored fts_vector index & eliminates multi-roundtrips)
+            combined_query = """
+            WITH vector_search AS (
+                SELECT 
+                    id, course_code, language, chapter, section, content,
+                    ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rank
+                FROM course_documents
+                WHERE course_code = $2 AND language = $3
+                ORDER BY embedding <=> $1::vector
+                LIMIT $5
+            ),
+            fts_search AS (
+                SELECT 
+                    id, course_code, language, chapter, section, content,
+                    ROW_NUMBER() OVER (
+                        ORDER BY ts_rank_cd(fts_vector, plainto_tsquery($4, $6)) DESC
+                    ) AS rank
+                FROM course_documents
+                WHERE course_code = $2 
+                  AND language = $3 
+                  AND fts_vector @@ plainto_tsquery($4, $6)
+                LIMIT $5
+            )
+            SELECT 
+                COALESCE(v.id, f.id) AS id,
+                COALESCE(v.course_code, f.course_code) AS course_code,
+                COALESCE(v.language, f.language) AS language,
+                COALESCE(v.chapter, f.chapter) AS chapter,
+                COALESCE(v.section, f.section) AS section,
+                COALESCE(v.content, f.content) AS content,
+                (COALESCE(1.0 / ($7 + v.rank), 0.0) + COALESCE(1.0 / ($7 + f.rank), 0.0)) AS rrf_score
+            FROM vector_search v
+            FULL OUTER JOIN fts_search f ON v.id = f.id
+            ORDER BY rrf_score DESC
+            LIMIT $8;
+            """
 
-                    fts_query = f"""
-                        SELECT id, course_code, language, chapter, section, content,
-                               ts_rank_cd(to_tsvector('{fts_config}', content), plainto_tsquery('{fts_config}', $1)) AS fts_score
-                        FROM course_documents
-                        WHERE course_code = $2 AND language = $3 
-                          AND to_tsvector('{fts_config}', content) @@ plainto_tsquery('{fts_config}', $1)
-                        ORDER BY fts_score DESC
-                        LIMIT $4;
-                    """
-                    fts_results = await conn.fetch(
-                        fts_query, query_text, course_code, language, top_k * 2
-                    )
-                    fts_span.set_attribute("rag.fts_results_count", len(fts_results))
-
-            # 3. Reciprocal Rank Fusion (RRF) Re-ranking Span
-            with tracer.start_as_current_span("rrf_fusion") as rrf_span:
-                scores: Dict[str, float] = {}
-                doc_map: Dict[str, Dict[str, Any]] = {}
-
-                for rank, doc in enumerate(vector_results):
-                    doc_id = str(doc["id"])
-                    doc_map[doc_id] = dict(doc)
-                    scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (rrf_k + rank + 1))
-
-                for rank, doc in enumerate(fts_results):
-                    doc_id = str(doc["id"])
-                    if doc_id not in doc_map:
-                        doc_map[doc_id] = dict(doc)
-                    scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (rrf_k + rank + 1))
-
-                reranked_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:top_k]
+            # Trace single CTE database execution span
+            with tracer.start_as_current_span("db_cte_hybrid_search") as db_span:
+                db_span.set_attribute("db.candidate_limit", candidate_limit)
                 
-                results = []
-                for doc_id in reranked_ids:
-                    item = doc_map[doc_id]
-                    item["rrf_score"] = scores[doc_id]
-                    results.append(item)
+                async with self.db_pool.acquire() as conn:
+                    records = await conn.fetch(
+                        combined_query,
+                        embedding_str,     # $1
+                        course_code,       # $2
+                        language,          # $3
+                        fts_config,        # $4
+                        candidate_limit,   # $5
+                        query_text,        # $6
+                        rrf_k,             # $7
+                        top_k              # $8
+                    )
+                db_span.set_attribute("db.fetched_records_count", len(records))
 
-                rrf_span.set_attribute("rag.total_unique_candidates", len(doc_map))
-                rrf_span.set_attribute("rag.returned_results_count", len(results))
-
+            results = [dict(record) for record in records]
             span.set_attribute("rag.final_results_count", len(results))
+
             return results

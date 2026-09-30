@@ -138,7 +138,6 @@ Create a `.env` file inside the `backend/` directory:
 ```env
 PROJECT_NAME="CogniLearn AI"
 VERSION="0.1.0"
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cognilearn"
 OPENAI_API_KEY="your-openai-api-key"
 
 ```
